@@ -76,7 +76,7 @@ int main() {
     // Authoritive Answer - Zero since we don't own the the domain - 1 bit.
     // Truncation - UDP response so always 0 - 1 bit.
     // Recursion Desired - Zero since this is a server - 1 bit.
-    response[2] = 0x0F;
+    response[2] = 0x80;
     // Recursion Available - Zero since it's not available - 1 bit.
     // Reserved - Not used, so zero - 3 bits.
     // Response Code - status of the response zero (no error) - 4 bits.
