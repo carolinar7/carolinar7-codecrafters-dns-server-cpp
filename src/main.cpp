@@ -65,34 +65,34 @@ int main() {
     std::cout << "Received " << bytesRead << " bytes: " << buffer << std::endl;
 
     // Create 12 byte response
-    uint16_t response[13];
+    unsigned char response[12];
 
-    // Packet Identifier (ID) - same as ID of query packet.
+    // Packet Identifier (ID) - same as ID of query packet - 16 bit.
     response[0] = buffer[0];
-    // Query/Response Indicator (QR) - 1 is for a reply packet.
-    response[1] = 1;
-    // OP Code - Zero is a standard lookup / query
-    response[2] = 0;
-    // Authoritive Answer - we don't own the the domain.
-    response[3] = 0;
-    // Truncation - UDP response so always 0.
-    response[4] = 0;
-    // Recursion Desired - Zero since this is a server.
-    response[5] = 0;
-    // Recursion Available - Zero since it's not available.
-    response[6] = 0;
-    // Reserved - Not used, so zero
-    response[7] = 0;
-    // Response Code - status of the response zero (no error)
-    response[8] = 0;
-    // Question count - number of questions in the question section. (We don't know so 0 for now)
-    response[9] = 0;
-    // Answer Record count - number of records in the answer section (We don't know so 0 for now)
-    response[10] = 0;
-    // Authority Record count - number of records in the authority section (We don't know so 0 for now)
-    response[11] = 0;
-    // Additional record count - number of records in the additional section (We don't know so 0 for now)
-    response[12] = 0;
+    response[1] = buffer[1];
+    // The rest should fit in 8 bits.
+    // Query/Response Indicator (QR) - One is for a reply packet - 1 bit.
+    // OP Code - Zero is a standard lookup / query - 4 bits.
+    // Authoritive Answer - Zero since we don't own the the domain - 1 bit.
+    // Truncation - UDP response so always 0 - 1 bit.
+    // Recursion Desired - Zero since this is a server - 1 bit.
+    response[2] = 0x0F;
+    // Recursion Available - Zero since it's not available - 1 bit.
+    // Reserved - Not used, so zero - 3 bits.
+    // Response Code - status of the response zero (no error) - 4 bits.
+    response[3] = 0x00;
+    // Question count - number of questions in the question section. (We don't know so 0 for now) - 16 bits.
+    response[4] = 0x00;
+    response[5] = 0x00;
+    // Answer Record count - number of records in the answer section (We don't know so 0 for now) - 16 bits.
+    response[6] = 0x00;
+    response[7] = 0x00;
+    // Authority Record count - number of records in the authority section (We don't know so 0 for now) - 16 bits.
+    response[8] = 0x00;
+    response[9] = 0x00;
+    // Additional record count - number of records in the additional section (We don't know so 0 for now) - 16 bits.
+    response[10] = 0x00;
+    response[11] = 0x00;
 
     // Send response
     if (sendto(udpSocket, response, sizeof(response), 0,
