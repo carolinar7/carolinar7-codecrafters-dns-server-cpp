@@ -16,7 +16,6 @@ int main() {
   // when running tests.
   std::cout << "Logs from your program will appear here!" << std::endl;
 
-  // TODO: Uncomment the code below to pass the first stage
   int udpSocket;
   struct sockaddr_in clientAddress;
 
@@ -65,8 +64,35 @@ int main() {
     buffer[bytesRead] = '\0';
     std::cout << "Received " << bytesRead << " bytes: " << buffer << std::endl;
 
-    // Create an empty response
-    char response[1] = {'\0'};
+    // Create 12 byte response
+    uint16_t response[13];
+
+    // Packet Identifier (ID) - same as ID of query packet.
+    response[0] = buffer[0];
+    // Query/Response Indicator (QR) - 1 is for a reply packet.
+    response[1] = 1;
+    // OP Code - Zero is a standard lookup / query
+    response[2] = 0;
+    // Authoritive Answer - we don't own the the domain.
+    response[3] = 0;
+    // Truncation - UDP response so always 0.
+    response[4] = 0;
+    // Recursion Desired - Zero since this is a server.
+    response[5] = 0;
+    // Recursion Available - Zero since it's not available.
+    response[6] = 0;
+    // Reserved - Not used, so zero
+    response[7] = 0;
+    // Response Code - status of the response zero (no error)
+    response[8] = 0;
+    // Question count - number of questions in the question section. (We don't know so 0 for now)
+    response[9] = 0;
+    // Answer Record count - number of records in the answer section (We don't know so 0 for now)
+    response[10] = 0;
+    // Authority Record count - number of records in the authority section (We don't know so 0 for now)
+    response[11] = 0;
+    // Additional record count - number of records in the additional section (We don't know so 0 for now)
+    response[12] = 0;
 
     // Send response
     if (sendto(udpSocket, response, sizeof(response), 0,
