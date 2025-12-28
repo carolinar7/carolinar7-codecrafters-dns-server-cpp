@@ -2,8 +2,7 @@
 #include "dns_packet.h"
 #include <array>
 
-std::array<unsigned char, 12>
-DNSMessage::create_message_from_buffer(char buffer[512]) {
+std::array<unsigned char, 12> DNSMessage::create_header(char buffer[512]) {
   // Create 12 byte response
   std::array<unsigned char, 12> response{};
 
@@ -39,4 +38,9 @@ DNSMessage::create_message_from_buffer(char buffer[512]) {
   response[11] = 0x00;
 
   return response;
+}
+
+std::array<unsigned char, 12>
+DNSMessage::create_message_from_buffer(char buffer[512]) {
+  return DNSMessage::create_header(buffer);
 }
