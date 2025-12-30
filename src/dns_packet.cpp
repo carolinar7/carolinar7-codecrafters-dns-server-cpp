@@ -20,10 +20,12 @@ void DNSPacket::create_initial_dns_packet() {
 std::vector<unsigned char> DNSPacket::get_return_packet() {
   std::vector<unsigned char> return_packet;
 
+  // Header section
   for (auto i = 0; i < this->header.size(); i++) {
     return_packet.push_back(this->header[i]);
   }
 
+  // Question section
   for (auto i = 0; i < this->question_vector.size(); i++) {
     return_packet.push_back(this->question_vector[i]);
   }
@@ -76,6 +78,7 @@ void DNSPacket::create_question_section() {
   unsigned char high_char = header[4];
   unsigned char low_char = header[5];
 
+  // Figure out how many questions exist by computing on high a low characters.
   this->question_count = DNSPacket::convert_unsigned_char_tuple_into_int(high_char, low_char);
 
   for (auto i = 0; i < this->question_count; i++) {
@@ -92,7 +95,8 @@ void DNSPacket::copy_question() {
     this->buffer_pointer++;
     buffer_item = this->buffer[this->buffer_pointer];
   }
-  // The 0x00
+  // The 0x00 - the null byte that indicates that the
+  // domain name has ended.
   this->question_vector.push_back(buffer_item);
   this->buffer_pointer++;
 
