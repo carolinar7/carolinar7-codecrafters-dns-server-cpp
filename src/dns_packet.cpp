@@ -1,6 +1,11 @@
 
 #include "dns_packet.h"
 #include <array>
+#include <iostream>
+
+int DNSMessage::convert_unsigned_char_tuple_into_int(unsigned char char_one, unsigned char char_two) {
+  return ((int)char_one << 8) | char_two;
+}
 
 std::array<unsigned char, 12> DNSMessage::create_header(char buffer[512]) {
   // Create 12 byte response
@@ -22,8 +27,8 @@ std::array<unsigned char, 12> DNSMessage::create_header(char buffer[512]) {
   response[3] = 0x00;
   // Question count - number of questions in the question section. (We don't
   // know so 0 for now) - 16 bits.
-  response[4] = 0x00;
-  response[5] = 0x00;
+  response[4] = buffer[4];
+  response[5] = buffer[5];
   // Answer Record count - number of records in the answer section (We don't
   // know so 0 for now) - 16 bits.
   response[6] = 0x00;
@@ -41,6 +46,28 @@ std::array<unsigned char, 12> DNSMessage::create_header(char buffer[512]) {
 }
 
 std::array<unsigned char, 12>
+DNSMessage::create_question_section(std::array<unsigned char, 12> header,
+                                    char buffer[512]) {
+  unsigned char firstPartOfQuestionCount = header[4];
+  unsigned char secondPartOfQuestionCount = header[5];
+
+  std::cout << "First Part: " << (int) firstPartOfQuestionCount << " Second Part: " << (int) secondPartOfQuestionCount << std::endl;  
+
+  int questionCount = DNSMessage::convert_unsigned_char_tuple_into_int(firstPartOfQuestionCount, secondPartOfQuestionCount);
+
+  std::cout << "Question Count: " << questionCount << std::endl;
+
+  unsigned char *arr = new unsigned char[questionCount];
+
+  // TODO: update
+  return header;
+}
+
+std::array<unsigned char, 12>
 DNSMessage::create_message_from_buffer(char buffer[512]) {
-  return DNSMessage::create_header(buffer);
+  std::cout << "Buffer: " << buffer << std::endl;
+  std::array<unsigned char, 12> header = DNSMessage::create_header(buffer);
+  std::array<unsigned char, 12> question_section =
+      DNSMessage::create_question_section(header, buffer);
+  return header;
 }
