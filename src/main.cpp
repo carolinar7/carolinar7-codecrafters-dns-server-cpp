@@ -66,10 +66,11 @@ int main() {
     buffer[bytesRead] = '\0';
     std::cout << "Received " << bytesRead << " bytes: " << buffer << std::endl;
 
-    std::array<unsigned char, 12> response = DNSMessage::create_message_from_buffer(buffer);
+    DNSPacket response_packet = DNSPacket(buffer);
+    std::vector<unsigned char> response = response_packet.get_return_packet();
 
     // Send response
-    if (sendto(udpSocket, &response, sizeof(response), 0,
+    if (sendto(udpSocket, response.data(), response.size(), 0,
                reinterpret_cast<struct sockaddr *>(&clientAddress),
                sizeof(clientAddress)) == -1) {
       perror("Failed to send response");
