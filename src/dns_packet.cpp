@@ -4,6 +4,9 @@
 #include <vector>
 // #include <iostream>
 
+std::string DOMAIN_NAME = "codecrafters.io";
+std::string NAME_DELIMETER = ".";
+
 DNSPacket::DNSPacket(char buf[512]) {
   for (int i = 0; i < 512; i++) {
     this->buffer[i] = buf[i];
@@ -15,6 +18,7 @@ DNSPacket::DNSPacket(char buf[512]) {
 void DNSPacket::create_initial_dns_packet() {
   DNSPacket::create_header();
   DNSPacket::create_question_section();
+  DNSPacket::create_answer_section();
 }
 
 std::vector<unsigned char> DNSPacket::get_return_packet() {
@@ -30,10 +34,16 @@ std::vector<unsigned char> DNSPacket::get_return_packet() {
     return_packet.push_back(this->question_vector[i]);
   }
 
+  // Answer section
+  for (auto i = 0; i < this->answer_vector.size(); i++) {
+    return_packet.push_back(this->answer_vector[i]);
+  }
+
   return return_packet;
 }
 
-int DNSPacket::convert_unsigned_char_tuple_into_int(unsigned char char_one, unsigned char char_two) {
+int DNSPacket::convert_unsigned_char_tuple_into_int(unsigned char char_one,
+                                                    unsigned char char_two) {
   return ((int)char_one << 8) | char_two;
 }
 
@@ -57,10 +67,9 @@ void DNSPacket::create_header() {
   // know so 0 for now) - 16 bits.
   this->header[4] = buffer[4];
   this->header[5] = buffer[5];
-  // Answer Record count - number of records in the answer section (We don't
-  // know so 0 for now) - 16 bits.
+  // Answer Record count - number of records in the answer section (Setting to 1 for now) - 16 bits.
   this->header[6] = 0x00;
-  this->header[7] = 0x00;
+  this->header[7] = 0x01;
   // Authority Record count - number of records in the authority section (We
   // don't know so 0 for now) - 16 bits.
   this->header[8] = 0x00;
@@ -79,7 +88,8 @@ void DNSPacket::create_question_section() {
   unsigned char low_char = header[5];
 
   // Figure out how many questions exist by computing on high a low characters.
-  this->question_count = DNSPacket::convert_unsigned_char_tuple_into_int(high_char, low_char);
+  this->question_count =
+      DNSPacket::convert_unsigned_char_tuple_into_int(high_char, low_char);
 
   for (auto i = 0; i < this->question_count; i++) {
     copy_question();
@@ -108,4 +118,68 @@ void DNSPacket::copy_question() {
     this->question_vector.push_back(buffer_item);
     this->buffer_pointer++;
   }
+}
+
+// For now, we are only answering with a single answer.
+void DNSPacket::create_answer_section() {
+  // Add the codecrafter.io domain name to our response
+  std::vector<unsigned char> domain_name_label =
+      convert_string_to_label_sequence(DOMAIN_NAME);
+  for (auto item : domain_name_label) {
+    this->answer_vector.push_back(item);
+  }
+
+  // We'll add the type. Size of 2 bytes. Default to 1.
+  this->answer_vector.push_back(0x00);
+  this->answer_vector.push_back(0x01);
+
+  //  We'll add the class. Size of 2 bytes. Default to 1.
+  this->answer_vector.push_back(0x00);
+  this->answer_vector.push_back(0x01);
+
+  // Setting TTL. Size of 4 bytes. Default to 60 seconds.
+  this->answer_vector.push_back(0x00);
+  this->answer_vector.push_back(0x00);
+  this->answer_vector.push_back(0x00);
+  this->answer_vector.push_back(0x3c);
+  
+  // Length of Data. Size of 2 bytes. Default to 4.
+  this->answer_vector.push_back(0x00);
+  this->answer_vector.push_back(0x04);
+  
+  // Data. Variable size. Default to an IP address (8.8.8.8).
+  this->answer_vector.push_back(0x08);
+  this->answer_vector.push_back(0x08);
+  this->answer_vector.push_back(0x08);
+  this->answer_vector.push_back(0x08);
+}
+
+std::vector<unsigned char>
+DNSPacket::convert_string_to_label_sequence(std::string str) {
+  std::vector<unsigned char> label_sequence;
+  while (str.length() != 0) {
+    auto delimeter_location = str.find(NAME_DELIMETER);
+    std::string token = str.substr(0, delimeter_location);
+
+    // Convert token to label sequence.
+    // Add length
+    unsigned char token_length = (unsigned char)token.length();
+    label_sequence.push_back(token_length);
+
+    // Add characters
+    for (auto i = 0; i < token.length(); i++) {
+      char token_char = token.at(i);
+      label_sequence.push_back((unsigned char)token_char);
+    }
+
+    // Shorten string to compute the next token
+    auto removal_location = delimeter_location + 1;
+    if (delimeter_location == std::string::npos) {
+      removal_location = str.length();
+    }
+    str.erase(0, removal_location);
+  }
+  // Null byte
+  label_sequence.push_back(0x00);
+  return label_sequence;
 }
