@@ -54,15 +54,21 @@ void DNSPacket::create_header() {
   this->header[1] = buffer[1];
   // The rest should fit in 8 bits.
   // Query/Response Indicator (QR) - One is for a reply packet - 1 bit.
-  // OP Code - Zero is a standard lookup / query - 4 bits.
+  unsigned char qr_indicator = 1 << 7;
+  // OP Code - Zero is a standard lookup / query - 4 bits. Computing from buffer query.
+  unsigned char opcode = (0x0F << 3) & buffer[2];
   // Authoritive Answer - Zero since we don't own the the domain - 1 bit.
+  unsigned char auth_answer = 0x00;
   // Truncation - UDP response so always 0 - 1 bit.
-  // Recursion Desired - Zero since this is a server - 1 bit.
-  this->header[2] = 0x80;
+  unsigned char truncation = 0x00;
+  // Recursion Desired - From the buffer query - 1 bit.
+  unsigned char recursion_desired = 0x01 & buffer[2];
+  this->header[2] = qr_indicator | opcode | auth_answer | truncation | recursion_desired;
   // Recursion Available - Zero since it's not available - 1 bit.
   // Reserved - Not used, so zero - 3 bits.
   // Response Code - status of the response zero (no error) - 4 bits.
-  this->header[3] = 0x00;
+  unsigned char response_code = opcode == 0x00 ? 0x00 : 0x04;
+  this->header[3] = response_code;
   // Question count - number of questions in the question section. (We don't
   // know so 0 for now) - 16 bits.
   this->header[4] = buffer[4];
