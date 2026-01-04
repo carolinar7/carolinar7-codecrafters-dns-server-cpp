@@ -2,7 +2,7 @@
 #include "dns_packet.h"
 #include <array>
 #include <vector>
-// #include <iostream>
+#include <iostream>
 
 std::string DOMAIN_NAME = "codecrafters.io";
 std::string NAME_DELIMETER = ".";
@@ -31,13 +31,19 @@ std::vector<unsigned char> DNSPacket::get_return_packet() {
 
   // Question section
   for (auto i = 0; i < this->question_vector.size(); i++) {
-    return_packet.push_back(this->question_vector[i]);
+    this->question_vector[i].add_question_into_return_packet(&return_packet);
   }
 
   // Answer section
   for (auto i = 0; i < this->answer_vector.size(); i++) {
-    return_packet.push_back(this->answer_vector[i]);
+    this->answer_vector[i].add_answer_into_return_packet(&return_packet);
   }
+
+  std::cout << "Return packet, size - " << return_packet.size() << " bytes " << std::endl;
+  for (auto i = 0; i < return_packet.size(); i++) {
+    std::cout << return_packet[i];
+  }
+  std::cout << std::endl;
 
   return return_packet;
 }
@@ -73,9 +79,9 @@ void DNSPacket::create_header() {
   // know so 0 for now) - 16 bits.
   this->header[4] = buffer[4];
   this->header[5] = buffer[5];
-  // Answer Record count - number of records in the answer section (Setting to 1 for now) - 16 bits.
-  this->header[6] = 0x00;
-  this->header[7] = 0x01;
+  // Answer Record count - number of records in the answer section (Setting to same values as question count) - 16 bits.
+  this->header[6] = buffer[4];
+  this->header[7] = buffer[5];
   // Authority Record count - number of records in the authority section (We
   // don't know so 0 for now) - 16 bits.
   this->header[8] = 0x00;
@@ -102,28 +108,62 @@ void DNSPacket::create_question_section() {
   }
 }
 
-void DNSPacket::copy_question() {
-  // We're going to copy over the domain name
-  char buffer_item = this->buffer[this->buffer_pointer];
-
+void DNSPacket::copy_pointer(std::vector<unsigned char> domain_vector, int pointer_loc) {
+  unsigned char buffer_item = this->buffer[pointer_loc];
   while (buffer_item != 0x00) {
-    this->question_vector.push_back(buffer_item);
-    this->buffer_pointer++;
-    buffer_item = this->buffer[this->buffer_pointer];
+    domain_vector.push_back(buffer_item);
+    pointer_loc++;
+    buffer_item = this->buffer[pointer_loc];
   }
   // The 0x00 - the null byte that indicates that the
   // domain name has ended.
-  this->question_vector.push_back(buffer_item);
+  domain_vector.push_back(buffer_item);
+}
+
+void DNSPacket::copy_question() {
+  std::vector<unsigned char> domain_vector;
+  // We're going to copy over the domain name
+  unsigned char buffer_item = this->buffer[this->buffer_pointer];
+
+  while (buffer_item != 0x00) {
+    // Check if buffer_item is a pointer
+    unsigned char pointer_check = buffer_item & 0xc0;
+    if ((pointer_check ^ 0xc0) == 0x00) {
+      // It's a pointer!
+      int pointer_loc = convert_unsigned_char_tuple_into_int((buffer_item & 0x3F), this->buffer[this->buffer_pointer + 1]);
+      copy_pointer(domain_vector, pointer_loc);
+      // pass this pointer, the next (which is part of the pointer computation), and finish on the next.
+      this->buffer_pointer += 2;
+    } else {
+      domain_vector.push_back(buffer_item);
+      this->buffer_pointer++;
+    }
+    buffer_item = this->buffer[this->buffer_pointer];
+  }
+
+  // The 0x00 - the null byte that indicates that the
+  // domain name has ended.
+  domain_vector.push_back(buffer_item);
   this->buffer_pointer++;
 
   // consume 4 more bytes:
   //  - 2 bytes for the type
-  //  - 2 bytes for the class
-  for (auto i = 0; i < 4; i++) {
+  std::array<unsigned char, 2> type;
+  for (auto i = 0; i < 2; i++) {
     char buffer_item = this->buffer[this->buffer_pointer];
-    this->question_vector.push_back(buffer_item);
+    type[i] = buffer_item;
     this->buffer_pointer++;
   }
+  //  - 2 bytes for the class
+  std::array<unsigned char, 2> ques_class;
+  for (auto i = 0; i < 2; i++) {
+    char buffer_item = this->buffer[this->buffer_pointer];
+    ques_class[i] = buffer_item;
+    this->buffer_pointer++;
+  }
+
+  auto question = Question(domain_vector, type, ques_class);
+  this->question_vector.push_back(question);
 }
 
 // For now, we are only answering with a single answer.
@@ -131,33 +171,32 @@ void DNSPacket::create_answer_section() {
   // Add the codecrafter.io domain name to our response
   std::vector<unsigned char> domain_name_label =
       convert_string_to_label_sequence(DOMAIN_NAME);
-  for (auto item : domain_name_label) {
-    this->answer_vector.push_back(item);
+
+  for (auto i = 0; i < this->question_count; i++) {
+    // Add domain name for the first question and so on
+    auto domain_name = this->question_vector[i].get_domain_name();
+
+    // We'll add the type. Size of 2 bytes. Default to 1.
+    std::array<unsigned char, 2> type {0x00, 0x01};
+    
+    //  We'll add the class. Size of 2 bytes. Default to 1.
+    std::array<unsigned char, 2> ans_class {0x00, 0x01};
+  
+    // Setting TTL. Size of 4 bytes. Default to 60 seconds.
+    std::array<unsigned char, 4> ttl {0x00, 0x00, 0x00, 0x3c};
+    
+    // Length of Data. Size of 2 bytes. Default to 4.
+    std::array<unsigned char, 2> length {0x00, 0x04};
+    
+    // Data. Variable size. Default to an IP address (8.8.8.8).
+    std::vector<unsigned char> data;
+    for (auto j = 0; j < 4; j++) {
+      data.push_back(0x08);
+    }
+
+    auto answer = Answer(domain_name, type, ans_class, ttl, length, data);
+    answer_vector.push_back(answer);
   }
-
-  // We'll add the type. Size of 2 bytes. Default to 1.
-  this->answer_vector.push_back(0x00);
-  this->answer_vector.push_back(0x01);
-
-  //  We'll add the class. Size of 2 bytes. Default to 1.
-  this->answer_vector.push_back(0x00);
-  this->answer_vector.push_back(0x01);
-
-  // Setting TTL. Size of 4 bytes. Default to 60 seconds.
-  this->answer_vector.push_back(0x00);
-  this->answer_vector.push_back(0x00);
-  this->answer_vector.push_back(0x00);
-  this->answer_vector.push_back(0x3c);
-  
-  // Length of Data. Size of 2 bytes. Default to 4.
-  this->answer_vector.push_back(0x00);
-  this->answer_vector.push_back(0x04);
-  
-  // Data. Variable size. Default to an IP address (8.8.8.8).
-  this->answer_vector.push_back(0x08);
-  this->answer_vector.push_back(0x08);
-  this->answer_vector.push_back(0x08);
-  this->answer_vector.push_back(0x08);
 }
 
 std::vector<unsigned char>
