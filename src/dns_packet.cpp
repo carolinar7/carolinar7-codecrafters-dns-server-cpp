@@ -39,12 +39,6 @@ std::vector<unsigned char> DNSPacket::get_return_packet() {
     this->answer_vector[i].add_answer_into_return_packet(&return_packet);
   }
 
-  std::cout << "Return packet, size - " << return_packet.size() << " bytes " << std::endl;
-  for (auto i = 0; i < return_packet.size(); i++) {
-    std::cout << return_packet[i];
-  }
-  std::cout << std::endl;
-
   return return_packet;
 }
 
