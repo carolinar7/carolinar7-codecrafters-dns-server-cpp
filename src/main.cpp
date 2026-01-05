@@ -1,12 +1,46 @@
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
+#include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
 #include "dns_packet.h"
-#include <array>
 
-int main() {
+std::string RESOLVER_FLAG = "--resolver";
+std::string ADDRESS_DELIMETER = ":";
+
+int main(int argc, char *argv[]) {
+  std::string forward_address = "";
+  std::string ip_address = "";
+  std::string port_address = "";
+  // When an argument is passed we expect to forward our packet.
+  if (argc > 1) {
+    if (argc != 3) {
+      // We should only expect two arguments in addition.
+      throw std::runtime_error("Expected two arguments. The --resolver flag and the address.");
+    }
+    
+    if (std::strcmp(RESOLVER_FLAG.c_str(), argv[1]) != 0) {
+      // We should have expected the resolver flag
+      throw std::runtime_error("Expected the --resolver flag.");
+    }
+
+    forward_address = argv[2];
+    auto delimeter_location = forward_address.find(ADDRESS_DELIMETER);
+
+    if (delimeter_location == std::string::npos) {
+      // The delimeter location was not found.
+      throw std::runtime_error("There was an error parsing the forwarding address.");
+    }
+
+    // TODO: Could perform some validation on the forward address or these fields. For now,
+    // I don't expect them to be in use.
+    ip_address = forward_address.substr(0, delimeter_location);
+    port_address = forward_address.substr(delimeter_location + 1, forward_address.size());
+
+    std::cout << "Forwarding to address with ip " << ip_address << " and port " << port_address << std::endl;
+  }
+
   // Flush after every std::cout / std::cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
