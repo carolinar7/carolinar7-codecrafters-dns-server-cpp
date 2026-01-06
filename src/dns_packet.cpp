@@ -1,13 +1,23 @@
 
 #include "dns_packet.h"
+#include <netinet/in.h>
+#include <string>
 #include <array>
 #include <vector>
-#include <iostream>
+// #include <iostream>
 
 std::string DOMAIN_NAME = "codecrafters.io";
 std::string NAME_DELIMETER = ".";
 
 DNSPacket::DNSPacket(char buf[512]) {
+  for (int i = 0; i < 512; i++) {
+    this->buffer[i] = buf[i];
+  }
+  this->buffer_pointer = 0;
+  create_initial_dns_packet();
+}
+
+DNSPacket::DNSPacket(char buf[512], sockaddr_in forwarding_address) {
   for (int i = 0; i < 512; i++) {
     this->buffer[i] = buf[i];
   }

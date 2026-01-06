@@ -1,44 +1,61 @@
+#include "dns_packet.h"
+#include <arpa/inet.h>
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
-#include "dns_packet.h"
 
 std::string RESOLVER_FLAG = "--resolver";
 std::string ADDRESS_DELIMETER = ":";
 
+sockaddr_in make_sockaddr(const std::string &ip_address_str,
+                          const std::string &port_address_str) {
+  auto port_address = std::stoi(port_address_str);
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(static_cast<uint16_t>(port_address));
+
+  if (inet_pton(AF_INET, ip_address_str.c_str(), &addr.sin_addr) != 1) {
+    throw std::runtime_error("Invalid IPv4 address");
+  }
+
+  return addr;
+}
+
 int main(int argc, char *argv[]) {
-  std::string forward_address = "";
-  std::string ip_address = "";
-  std::string port_address = "";
+  std::string ip_address_str = "";
+  std::string port_address_str = "";
+
   // When an argument is passed we expect to forward our packet.
   if (argc > 1) {
     if (argc != 3) {
       // We should only expect two arguments in addition.
-      throw std::runtime_error("Expected two arguments. The --resolver flag and the address.");
+      throw std::runtime_error(
+          "Expected two arguments. The --resolver flag and the address.");
     }
-    
+
     if (std::strcmp(RESOLVER_FLAG.c_str(), argv[1]) != 0) {
       // We should have expected the resolver flag
       throw std::runtime_error("Expected the --resolver flag.");
     }
 
-    forward_address = argv[2];
+    std::string forward_address = argv[2];
     auto delimeter_location = forward_address.find(ADDRESS_DELIMETER);
 
     if (delimeter_location == std::string::npos) {
       // The delimeter location was not found.
-      throw std::runtime_error("There was an error parsing the forwarding address.");
+      throw std::runtime_error(
+          "There was an error parsing the forwarding address.");
     }
 
-    // TODO: Could perform some validation on the forward address or these fields. For now,
-    // I don't expect them to be in use.
-    ip_address = forward_address.substr(0, delimeter_location);
-    port_address = forward_address.substr(delimeter_location + 1, forward_address.size());
+    ip_address_str = forward_address.substr(0, delimeter_location);
+    port_address_str =
+        forward_address.substr(delimeter_location + 1, forward_address.size());
 
-    std::cout << "Forwarding to address with ip " << ip_address << " and port " << port_address << std::endl;
+    std::cout << "Forwarding to address with ip " << ip_address_str
+              << " and port " << port_address_str << std::endl;
   }
 
   // Flush after every std::cout / std::cerr
@@ -100,7 +117,10 @@ int main(int argc, char *argv[]) {
     buffer[bytesRead] = '\0';
     std::cout << "Received " << bytesRead << " bytes: " << buffer << std::endl;
 
-    DNSPacket response_packet = DNSPacket(buffer);
+    DNSPacket response_packet =
+        (!ip_address_str.empty() && !port_address_str.empty())
+            ? DNSPacket(buffer, make_sockaddr(ip_address_str, port_address_str))
+            : DNSPacket(buffer);
     std::vector<unsigned char> response = response_packet.get_return_packet();
 
     // Send response

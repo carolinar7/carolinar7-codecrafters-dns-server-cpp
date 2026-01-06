@@ -1,5 +1,6 @@
 #include "answer.h"
 #include "question.h"
+#include <netinet/in.h>
 #include <array>
 #include <vector>
 #include <string>
@@ -29,6 +30,7 @@ class DNSPacket {
   public:
     static int convert_unsigned_char_tuple_into_int(unsigned char char_one, unsigned char char_two);
     static std::vector<unsigned char> convert_string_to_label_sequence(std::string str);
+    DNSPacket(char buffer[512], sockaddr_in forwarding_address);
     DNSPacket(char buffer[512]);
     std::vector<unsigned char> get_return_packet();
 };
