@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
 
     DNSPacket response_packet =
         (!ip_address_str.empty() && !port_address_str.empty())
-            ? DNSPacket(buffer, make_sockaddr(ip_address_str, port_address_str))
+            ? DNSPacket(buffer, make_sockaddr(ip_address_str, port_address_str), udpSocket)
             : DNSPacket(buffer);
     std::vector<unsigned char> response = response_packet.get_return_packet();
 

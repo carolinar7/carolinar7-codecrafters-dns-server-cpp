@@ -1,15 +1,19 @@
 
 #include "dns_packet.h"
 #include <netinet/in.h>
+#include <sys/socket.h>
 #include <string>
 #include <array>
 #include <vector>
-// #include <iostream>
+#include <iostream>
+#include <unistd.h>
+#include <cstring>
 
 std::string DOMAIN_NAME = "codecrafters.io";
 std::string NAME_DELIMETER = ".";
 
 DNSPacket::DNSPacket(char buf[512]) {
+  std::cout << "Normal Constructor" << std::endl;
   for (int i = 0; i < 512; i++) {
     this->buffer[i] = buf[i];
   }
@@ -17,18 +21,25 @@ DNSPacket::DNSPacket(char buf[512]) {
   create_initial_dns_packet();
 }
 
-DNSPacket::DNSPacket(char buf[512], sockaddr_in forwarding_address) {
+DNSPacket::DNSPacket(char buf[512], sockaddr_in forwarding_address, int udpSocket) {
+  std::cout << "Forwarding Constructor" << std::endl;
   for (int i = 0; i < 512; i++) {
     this->buffer[i] = buf[i];
   }
   this->buffer_pointer = 0;
-  create_initial_dns_packet();
+  create_initial_dns_packet_with_forwarding_address(forwarding_address, udpSocket);
 }
 
 void DNSPacket::create_initial_dns_packet() {
   DNSPacket::create_header();
   DNSPacket::create_question_section();
   DNSPacket::create_answer_section();
+}
+
+void DNSPacket::create_initial_dns_packet_with_forwarding_address(sockaddr_in forward_address, int udpSocket) {
+  DNSPacket::create_header();
+  // The answer section will be filled within this method.
+  DNSPacket::create_sections_with_forwarder(forward_address, udpSocket);
 }
 
 std::vector<unsigned char> DNSPacket::get_return_packet() {
@@ -48,6 +59,19 @@ std::vector<unsigned char> DNSPacket::get_return_packet() {
   for (auto i = 0; i < this->answer_vector.size(); i++) {
     this->answer_vector[i].add_answer_into_return_packet(&return_packet);
   }
+
+  return return_packet;
+}
+
+std::vector<unsigned char> DNSPacket::get_return_packet_for_question(int index) {
+  std::vector<unsigned char> return_packet;
+
+  // Header section
+  for (auto i = 0; i < this->header.size(); i++) {
+    return_packet.push_back(this->header[i]);
+  }
+
+  this->question_vector[index].add_question_into_return_packet(&return_packet);
 
   return return_packet;
 }
@@ -112,6 +136,14 @@ void DNSPacket::create_question_section() {
   }
 }
 
+void DNSPacket::create_sections_with_forwarder(sockaddr_in forwarding_address, int udpSocket) {
+  std::cout << "Creating sections" << std::endl;
+  // Let's create the question section as normal.
+  create_question_section();
+  // Answer section
+  create_answer_section_with_forwarding_address(forwarding_address, udpSocket);
+}
+
 void DNSPacket::copy_pointer(std::vector<unsigned char> domain_vector, int pointer_loc) {
   unsigned char buffer_item = this->buffer[pointer_loc];
   while (buffer_item != 0x00) {
@@ -172,10 +204,6 @@ void DNSPacket::copy_question() {
 
 // For now, we are only answering with a single answer.
 void DNSPacket::create_answer_section() {
-  // Add the codecrafter.io domain name to our response
-  std::vector<unsigned char> domain_name_label =
-      convert_string_to_label_sequence(DOMAIN_NAME);
-
   for (auto i = 0; i < this->question_count; i++) {
     // Add domain name for the first question and so on
     auto domain_name = this->question_vector[i].get_domain_name();
@@ -200,6 +228,39 @@ void DNSPacket::create_answer_section() {
 
     auto answer = Answer(domain_name, type, ans_class, ttl, length, data);
     answer_vector.push_back(answer);
+  }
+}
+
+void DNSPacket::create_answer_section_with_forwarding_address(sockaddr_in forwarding_address, int udpSocket) {
+  std::cout << "Answer section with forwarding address" << std::endl;
+  for (auto i = 0; i < this->question_count; i++) {
+    int bytesRead;
+    char buffer[512];
+    socklen_t clientAddrLen = sizeof(forwarding_address);
+
+    auto packet = get_return_packet_for_question(i);
+
+    std::cout << "forwarding packet" << std::endl;
+    // Forward packet
+    if (sendto(udpSocket, packet.data(), packet.size(), 0, reinterpret_cast<struct sockaddr *>(&forwarding_address), sizeof(forwarding_address)) == -1) {
+      perror("Failed to send response");
+    }
+    
+    std::cout << "listening to packet" << std::endl;
+    // Listen to response
+    bytesRead = recvfrom(udpSocket, buffer, sizeof(buffer), 0,
+    reinterpret_cast<struct sockaddr *>(&forwarding_address),
+    &clientAddrLen);
+    if (bytesRead == -1) {
+      perror("Error receiving data");
+      break;
+    }
+    buffer[bytesRead] = '\0';
+
+    std::cout << "Received " << bytesRead << " forwarding bytes: " << buffer << std::endl;
+
+    // Parse response
+    // Add answer to vector
   }
 }
 
