@@ -63,15 +63,25 @@ std::vector<unsigned char> DNSPacket::get_return_packet() {
   return return_packet;
 }
 
+std::vector<Answer> DNSPacket::get_answer_section() {
+  return this->answer_vector;
+}
+
 std::vector<unsigned char> DNSPacket::get_return_packet_for_question(int index) {
   std::vector<unsigned char> return_packet;
+
+  std::cout << "Header size " << this->header.size() << std::endl;
 
   // Header section
   for (auto i = 0; i < this->header.size(); i++) {
     return_packet.push_back(this->header[i]);
   }
 
+  std::cout << "Return packet size for answer section " << return_packet.size() << std::endl;
+
   this->question_vector[index].add_question_into_return_packet(&return_packet);
+
+  std::cout << "Final Forwarding Question Size " << return_packet.size() << std::endl;
 
   return return_packet;
 }
@@ -260,7 +270,58 @@ void DNSPacket::create_answer_section_with_forwarding_address(sockaddr_in forwar
     std::cout << "Received " << bytesRead << " forwarding bytes: " << buffer << std::endl;
 
     // Parse response
-    // Add answer to vector
+    DNSPacket server_response_packet = DNSPacket(buffer);
+    auto server_response_answer_section = server_response_packet.get_answer_section();
+    // Making a VERY STRONG ASSUMPTION that there is only one answer in the packet.
+    if (server_response_answer_section.size() == 1) {
+      std::cout << "Number of answers " << server_response_answer_section.size() << std::endl;
+      auto server_answer = server_response_answer_section[0];
+      this->answer_vector.push_back(server_answer);
+      // TODO REMOVE
+      auto server_domain_name = server_answer.get_domain_name();
+      std::cout << "Domain Name: ";
+      for (auto j = 0; j < server_domain_name.size(); j++) {
+        std::cout << (char) server_domain_name[j] << " ";
+      }
+      std::cout << std::endl;
+
+      auto server_type = server_answer.get_type();
+      std::cout << "Type: ";
+      for (auto j = 0; j < server_type.size(); j++) {
+        std::cout << (int) server_type[j] << " ";
+      }
+      std::cout << std::endl;
+
+      auto server_ans_class = server_answer.get_ans_class();
+      std::cout << "Class: ";
+      for (auto j = 0; j < server_ans_class.size(); j++) {
+        std::cout << (int) server_ans_class[j] << " ";
+      }
+      std::cout << std::endl;
+
+      auto server_ttl = server_answer.get_ttl();
+      std::cout << "TTL: ";
+      for (auto j = 0; j < server_ttl.size(); j++) {
+        std::cout << (int) server_ttl[j] << " ";
+      }
+      std::cout << std::endl;
+
+      auto server_length = server_answer.get_length();
+      std::cout << "Length: ";
+      for (auto j = 0; j < server_length.size(); j++) {
+        std::cout << (int) server_length[j] << " ";
+      }
+      std::cout << std::endl;
+
+      auto server_data = server_answer.get_data();
+      std::cout << "Data: ";
+      for (auto j = 0; j < server_data.size(); j++) {
+        std::cout << (int) server_data[j] << " ";
+      }
+      std::cout << std::endl;
+    } else {
+      throw std::runtime_error("Did not receive an answer from server.");
+    }
   }
 }
 

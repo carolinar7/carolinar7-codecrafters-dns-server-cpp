@@ -45,3 +45,27 @@ void Answer::add_answer_into_return_packet(std::vector<unsigned char>* return_pa
     return_packet->push_back(data_char);
   }
 }
+
+std::vector<unsigned char> Answer::get_data() {
+  return this->data;
+}
+
+std::vector<unsigned char> Answer::get_domain_name() {
+  return this->domain_name;
+}
+
+std::array<unsigned char, 2> Answer::get_type() {
+  return this->type;
+}
+
+std::array<unsigned char, 2> Answer::get_ans_class() {
+  return this->ans_class;
+}
+
+std::array<unsigned char, 4> Answer::get_ttl() {
+  return this->ttl;
+}
+
+std::array<unsigned char, 2> Answer::get_length() {
+  return this->length;
+}

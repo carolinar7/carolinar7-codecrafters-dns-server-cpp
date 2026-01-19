@@ -41,4 +41,5 @@ class DNSPacket {
     DNSPacket(char buffer[512], sockaddr_in forwarding_address, int udpSocket);
     DNSPacket(char buffer[512]);
     std::vector<unsigned char> get_return_packet();
+    std::vector<Answer> get_answer_section();
 };
