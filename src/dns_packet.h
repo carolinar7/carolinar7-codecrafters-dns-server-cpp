@@ -42,4 +42,10 @@ class DNSPacket {
     DNSPacket(char buffer[512]);
     std::vector<unsigned char> get_return_packet();
     std::vector<Answer> get_answer_section();
+
+    // Print functions
+    void print_dns_packet();
+    void print_header();
+    void print_all_questions();
+    void print_all_answers();
 };

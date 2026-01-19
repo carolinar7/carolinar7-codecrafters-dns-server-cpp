@@ -70,18 +70,12 @@ std::vector<Answer> DNSPacket::get_answer_section() {
 std::vector<unsigned char> DNSPacket::get_return_packet_for_question(int index) {
   std::vector<unsigned char> return_packet;
 
-  std::cout << "Header size " << this->header.size() << std::endl;
-
   // Header section
   for (auto i = 0; i < this->header.size(); i++) {
     return_packet.push_back(this->header[i]);
   }
 
-  std::cout << "Return packet size for answer section " << return_packet.size() << std::endl;
-
   this->question_vector[index].add_question_into_return_packet(&return_packet);
-
-  std::cout << "Final Forwarding Question Size " << return_packet.size() << std::endl;
 
   return return_packet;
 }
@@ -147,7 +141,6 @@ void DNSPacket::create_question_section() {
 }
 
 void DNSPacket::create_sections_with_forwarder(sockaddr_in forwarding_address, int udpSocket) {
-  std::cout << "Creating sections" << std::endl;
   // Let's create the question section as normal.
   create_question_section();
   // Answer section
@@ -274,51 +267,8 @@ void DNSPacket::create_answer_section_with_forwarding_address(sockaddr_in forwar
     auto server_response_answer_section = server_response_packet.get_answer_section();
     // Making a VERY STRONG ASSUMPTION that there is only one answer in the packet.
     if (server_response_answer_section.size() == 1) {
-      std::cout << "Number of answers " << server_response_answer_section.size() << std::endl;
       auto server_answer = server_response_answer_section[0];
       this->answer_vector.push_back(server_answer);
-      // TODO REMOVE
-      auto server_domain_name = server_answer.get_domain_name();
-      std::cout << "Domain Name: ";
-      for (auto j = 0; j < server_domain_name.size(); j++) {
-        std::cout << (char) server_domain_name[j] << " ";
-      }
-      std::cout << std::endl;
-
-      auto server_type = server_answer.get_type();
-      std::cout << "Type: ";
-      for (auto j = 0; j < server_type.size(); j++) {
-        std::cout << (int) server_type[j] << " ";
-      }
-      std::cout << std::endl;
-
-      auto server_ans_class = server_answer.get_ans_class();
-      std::cout << "Class: ";
-      for (auto j = 0; j < server_ans_class.size(); j++) {
-        std::cout << (int) server_ans_class[j] << " ";
-      }
-      std::cout << std::endl;
-
-      auto server_ttl = server_answer.get_ttl();
-      std::cout << "TTL: ";
-      for (auto j = 0; j < server_ttl.size(); j++) {
-        std::cout << (int) server_ttl[j] << " ";
-      }
-      std::cout << std::endl;
-
-      auto server_length = server_answer.get_length();
-      std::cout << "Length: ";
-      for (auto j = 0; j < server_length.size(); j++) {
-        std::cout << (int) server_length[j] << " ";
-      }
-      std::cout << std::endl;
-
-      auto server_data = server_answer.get_data();
-      std::cout << "Data: ";
-      for (auto j = 0; j < server_data.size(); j++) {
-        std::cout << (int) server_data[j] << " ";
-      }
-      std::cout << std::endl;
     } else {
       throw std::runtime_error("Did not receive an answer from server.");
     }
@@ -353,4 +303,240 @@ DNSPacket::convert_string_to_label_sequence(std::string str) {
   // Null byte
   label_sequence.push_back(0x00);
   return label_sequence;
+}
+
+// ============================================================================
+// DNS PACKET PRINT HELPER FUNCTIONS
+// ============================================================================
+
+// Helper: Convert domain name label sequence to readable string
+static std::string label_to_string(const std::vector<unsigned char>& label_sequence) {
+  std::string domain_name = "";
+  size_t i = 0;
+
+  while (i < label_sequence.size() && label_sequence[i] != 0x00) {
+    unsigned char length = label_sequence[i];
+    i++;
+
+    if (i + length > label_sequence.size()) {
+      break;
+    }
+
+    for (unsigned char j = 0; j < length; j++) {
+      domain_name += static_cast<char>(label_sequence[i]);
+      i++;
+    }
+
+    if (i < label_sequence.size() && label_sequence[i] != 0x00) {
+      domain_name += ".";
+    }
+  }
+
+  return domain_name;
+}
+
+// Helper: Get DNS type as string
+static std::string type_to_string(unsigned char high, unsigned char low) {
+  int type_value = DNSPacket::convert_unsigned_char_tuple_into_int(high, low);
+
+  switch (type_value) {
+    case 1: return "A (IPv4 address)";
+    case 2: return "NS (Name Server)";
+    case 5: return "CNAME (Canonical Name)";
+    case 6: return "SOA (Start of Authority)";
+    case 15: return "MX (Mail Exchange)";
+    case 16: return "TXT (Text)";
+    case 28: return "AAAA (IPv6 address)";
+    default: return "Unknown (" + std::to_string(type_value) + ")";
+  }
+}
+
+// Helper: Get DNS class as string
+static std::string class_to_string(unsigned char high, unsigned char low) {
+  int class_value = DNSPacket::convert_unsigned_char_tuple_into_int(high, low);
+
+  switch (class_value) {
+    case 1: return "IN (Internet)";
+    case 2: return "CS (CSNET)";
+    case 3: return "CH (CHAOS)";
+    case 4: return "HS (Hesiod)";
+    default: return "Unknown (" + std::to_string(class_value) + ")";
+  }
+}
+
+// Print the DNS Header
+void DNSPacket::print_header() {
+  std::cout << "╔════════════════════════════════════════════════════════════════╗" << std::endl;
+  std::cout << "║                        DNS PACKET HEADER                       ║" << std::endl;
+  std::cout << "╚════════════════════════════════════════════════════════════════╝" << std::endl;
+
+  // Packet ID
+  int packet_id = convert_unsigned_char_tuple_into_int(header[0], header[1]);
+  std::cout << "Transaction ID:      0x" << std::hex << packet_id << std::dec << " (" << packet_id << ")" << std::endl;
+
+  // Flags (byte 2)
+  bool qr = (header[2] & 0x80) != 0;
+  int opcode = (header[2] & 0x78) >> 3;
+  bool aa = (header[2] & 0x04) != 0;
+  bool tc = (header[2] & 0x02) != 0;
+  bool rd = (header[2] & 0x01) != 0;
+
+  std::cout << "Flags:" << std::endl;
+  std::cout << "  QR (Query/Response): " << (qr ? "Response (1)" : "Query (0)") << std::endl;
+  std::cout << "  OPCODE:              " << opcode << " (";
+  switch (opcode) {
+    case 0: std::cout << "Standard Query"; break;
+    case 1: std::cout << "Inverse Query"; break;
+    case 2: std::cout << "Status Request"; break;
+    default: std::cout << "Reserved"; break;
+  }
+  std::cout << ")" << std::endl;
+  std::cout << "  AA (Authoritative):  " << (aa ? "Yes (1)" : "No (0)") << std::endl;
+  std::cout << "  TC (Truncated):      " << (tc ? "Yes (1)" : "No (0)") << std::endl;
+  std::cout << "  RD (Recursion Des.): " << (rd ? "Yes (1)" : "No (0)") << std::endl;
+
+  // Flags (byte 3)
+  bool ra = (header[3] & 0x80) != 0;
+  int rcode = header[3] & 0x0F;
+
+  std::cout << "  RA (Recursion Avl.): " << (ra ? "Yes (1)" : "No (0)") << std::endl;
+  std::cout << "  RCODE:               " << rcode << " (";
+  switch (rcode) {
+    case 0: std::cout << "No Error"; break;
+    case 1: std::cout << "Format Error"; break;
+    case 2: std::cout << "Server Failure"; break;
+    case 3: std::cout << "Name Error"; break;
+    case 4: std::cout << "Not Implemented"; break;
+    case 5: std::cout << "Refused"; break;
+    default: std::cout << "Reserved"; break;
+  }
+  std::cout << ")" << std::endl;
+
+  // Counts
+  int qdcount = convert_unsigned_char_tuple_into_int(header[4], header[5]);
+  int ancount = convert_unsigned_char_tuple_into_int(header[6], header[7]);
+  int nscount = convert_unsigned_char_tuple_into_int(header[8], header[9]);
+  int arcount = convert_unsigned_char_tuple_into_int(header[10], header[11]);
+
+  std::cout << "\nRecord Counts:" << std::endl;
+  std::cout << "  Questions:           " << qdcount << std::endl;
+  std::cout << "  Answers:             " << ancount << std::endl;
+  std::cout << "  Authority Records:   " << nscount << std::endl;
+  std::cout << "  Additional Records:  " << arcount << std::endl;
+  std::cout << std::endl;
+}
+
+// Print all Questions
+void DNSPacket::print_all_questions() {
+  if (question_vector.empty()) {
+    std::cout << "╔════════════════════════════════════════════════════════════════╗" << std::endl;
+    std::cout << "║                       QUESTION SECTION                         ║" << std::endl;
+    std::cout << "╚════════════════════════════════════════════════════════════════╝" << std::endl;
+    std::cout << "  (empty)" << std::endl << std::endl;
+    return;
+  }
+
+  std::cout << "╔════════════════════════════════════════════════════════════════╗" << std::endl;
+  std::cout << "║                       QUESTION SECTION                         ║" << std::endl;
+  std::cout << "╚════════════════════════════════════════════════════════════════╝" << std::endl;
+
+  for (size_t i = 0; i < question_vector.size(); i++) {
+    std::cout << "  [Question " << (i + 1) << "]" << std::endl;
+
+    auto domain_name = question_vector[i].get_domain_name();
+    std::string domain_str = label_to_string(domain_name);
+    std::cout << "    Name:   " << domain_str << std::endl;
+    std::cout << "    Type:   A (IPv4 address)" << std::endl;
+    std::cout << "    Class:  IN (Internet)" << std::endl;
+    std::cout << std::endl;
+  }
+}
+
+// Print all Answers
+void DNSPacket::print_all_answers() {
+  if (answer_vector.empty()) {
+    std::cout << "╔════════════════════════════════════════════════════════════════╗" << std::endl;
+    std::cout << "║                        ANSWER SECTION                          ║" << std::endl;
+    std::cout << "╚════════════════════════════════════════════════════════════════╝" << std::endl;
+    std::cout << "  (empty)" << std::endl << std::endl;
+    return;
+  }
+
+  std::cout << "╔════════════════════════════════════════════════════════════════╗" << std::endl;
+  std::cout << "║                        ANSWER SECTION                          ║" << std::endl;
+  std::cout << "╚════════════════════════════════════════════════════════════════╝" << std::endl;
+
+  for (size_t i = 0; i < answer_vector.size(); i++) {
+    std::cout << "  [Answer " << (i + 1) << "]" << std::endl;
+
+    // Domain Name
+    auto domain_name = answer_vector[i].get_domain_name();
+    std::string domain_str = label_to_string(domain_name);
+    std::cout << "    Name:        " << domain_str << std::endl;
+
+    // Type
+    auto type = answer_vector[i].get_type();
+    std::cout << "    Type:        " << type_to_string(type[0], type[1]) << std::endl;
+
+    // Class
+    auto ans_class = answer_vector[i].get_ans_class();
+    std::cout << "    Class:       " << class_to_string(ans_class[0], ans_class[1]) << std::endl;
+
+    // TTL
+    auto ttl = answer_vector[i].get_ttl();
+    int ttl_value = (ttl[0] << 24) | (ttl[1] << 16) | (ttl[2] << 8) | ttl[3];
+    std::cout << "    TTL:         " << ttl_value << " seconds" << std::endl;
+
+    // Data Length
+    auto length = answer_vector[i].get_length();
+    int length_value = convert_unsigned_char_tuple_into_int(length[0], length[1]);
+    std::cout << "    Data Length: " << length_value << " bytes" << std::endl;
+
+    // Data
+    auto data = answer_vector[i].get_data();
+    int type_value = convert_unsigned_char_tuple_into_int(type[0], type[1]);
+
+    if (type_value == 1 && data.size() == 4) {
+      // A record - IPv4 address
+      std::cout << "    Data:        "
+                << static_cast<int>(data[0]) << "."
+                << static_cast<int>(data[1]) << "."
+                << static_cast<int>(data[2]) << "."
+                << static_cast<int>(data[3]) << std::endl;
+    } else if (type_value == 28 && data.size() == 16) {
+      // AAAA record - IPv6 address
+      std::cout << "    Data:        ";
+      for (size_t j = 0; j < data.size(); j += 2) {
+        printf("%02x%02x", data[j], data[j+1]);
+        if (j < data.size() - 2) std::cout << ":";
+      }
+      std::cout << std::endl;
+    } else {
+      // Other types - hex
+      std::cout << "    Data:        ";
+      for (size_t j = 0; j < data.size(); j++) {
+        printf("%02x ", data[j]);
+      }
+      std::cout << std::endl;
+    }
+    std::cout << std::endl;
+  }
+}
+
+// Print the entire DNS Packet
+void DNSPacket::print_dns_packet() {
+  std::cout << "\n";
+  std::cout << "================================================================" << std::endl;
+  std::cout << "                    DNS PACKET DETAILS                          " << std::endl;
+  std::cout << "================================================================" << std::endl;
+  std::cout << std::endl;
+
+  print_header();
+  print_all_questions();
+  print_all_answers();
+
+  std::cout << "================================================================" << std::endl;
+  std::cout << "                       END OF DNS PACKET                        " << std::endl;
+  std::cout << "================================================================" << std::endl;
+  std::cout << "\n";
 }
