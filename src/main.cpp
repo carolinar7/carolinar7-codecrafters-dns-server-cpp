@@ -1,23 +1,28 @@
 #include "dns_packet.h"
 #include <arpa/inet.h>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
+#include <ostream>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <memory>
+#include <stdlib.h>
 
 std::string RESOLVER_FLAG = "--resolver";
 std::string ADDRESS_DELIMETER = ":";
 
-sockaddr_in make_sockaddr(const std::string &ip_address_str,
+std::unique_ptr<sockaddr_in> make_sockaddr(const std::string &ip_address_str,
                           const std::string &port_address_str) {
   auto port_address = std::stoi(port_address_str);
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<uint16_t>(port_address));
+  auto unasigned_int_port_address = static_cast<uint16_t>(port_address);
+  auto addr = std::make_unique<sockaddr_in>();
+  addr->sin_family = AF_INET;
+  addr->sin_port = htons(unasigned_int_port_address);
 
-  if (inet_pton(AF_INET, ip_address_str.c_str(), &addr.sin_addr) != 1) {
+  if (inet_pton(AF_INET, ip_address_str.c_str(), &addr->sin_addr) != 1) {
     throw std::runtime_error("Invalid IPv4 address");
   }
 
@@ -117,12 +122,19 @@ int main(int argc, char *argv[]) {
     buffer[bytesRead] = '\0';
     std::cout << "Received " << bytesRead << " bytes: " << buffer << std::endl;
 
+    auto packet_received = DNSPacket(buffer);
+    // std::cout << "Packet Received: " << std::endl;
+    // packet_received.print_dns_packet();
+
+    auto forward_sockaddr = *make_sockaddr(ip_address_str, port_address_str).release();
+
     DNSPacket response_packet =
         (!ip_address_str.empty() && !port_address_str.empty())
-            ? DNSPacket(buffer, make_sockaddr(ip_address_str, port_address_str), udpSocket)
-            : DNSPacket(buffer);
-    response_packet.print_dns_packet();
-    std::vector<unsigned char> response = response_packet.get_return_packet();
+            ? DNSPacket::forward_packet(packet_received, forward_sockaddr)
+            : DNSPacket::respond_to_packet(packet_received);
+    // std::cout << "Response from this server: " << std::endl;
+    // response_packet.print_dns_packet();
+    std::vector<unsigned char> response = response_packet.get_packet_vector();
 
     // Send response
     if (sendto(udpSocket, response.data(), response.size(), 0,

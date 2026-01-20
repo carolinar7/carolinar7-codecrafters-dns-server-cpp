@@ -1,5 +1,6 @@
 
 #include "dns_packet.h"
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <string>
@@ -9,40 +10,73 @@
 #include <unistd.h>
 #include <cstring>
 
-std::string DOMAIN_NAME = "codecrafters.io";
-std::string NAME_DELIMETER = ".";
+const std::string DOMAIN_NAME = "codecrafters.io";
+const std::string NAME_DELIMETER = ".";
+const int HEADER_BYTE_SIZE = 12;
+const int BUFFER_SIZE = 512;
 
-DNSPacket::DNSPacket(char buf[512]) {
-  std::cout << "Normal Constructor" << std::endl;
-  for (int i = 0; i < 512; i++) {
-    this->buffer[i] = buf[i];
-  }
+// ============================================================================
+// DNS PACKET Construction
+// ============================================================================
+
+DNSPacket::DNSPacket(char buf[BUFFER_SIZE]) {
   this->buffer_pointer = 0;
-  create_initial_dns_packet();
+  copy_dns_packet(buf);
 }
 
-DNSPacket::DNSPacket(char buf[512], sockaddr_in forwarding_address, int udpSocket) {
-  std::cout << "Forwarding Constructor" << std::endl;
-  for (int i = 0; i < 512; i++) {
-    this->buffer[i] = buf[i];
-  }
+DNSPacket::DNSPacket() {
   this->buffer_pointer = 0;
-  create_initial_dns_packet_with_forwarding_address(forwarding_address, udpSocket);
 }
 
-void DNSPacket::create_initial_dns_packet() {
-  DNSPacket::create_header();
-  DNSPacket::create_question_section();
-  DNSPacket::create_answer_section();
+void DNSPacket::copy_dns_packet(char buf[BUFFER_SIZE]) {
+  copy_buffer(buf);
+  copy_header();
+  copy_question_section();
+  copy_answer_section();
 }
 
-void DNSPacket::create_initial_dns_packet_with_forwarding_address(sockaddr_in forward_address, int udpSocket) {
-  DNSPacket::create_header();
-  // The answer section will be filled within this method.
-  DNSPacket::create_sections_with_forwarder(forward_address, udpSocket);
+std::vector<unsigned char> DNSPacket::create_question_packet(Question question) {
+  std::vector<unsigned char> return_packet;
+
+  // Copy transaction ID from buffer (original query)
+  return_packet.push_back(buffer[0]);
+  return_packet.push_back(buffer[1]);
+
+  // Flags byte 2: QR=0 (query), copy OPCODE and RD from original
+  unsigned char opcode = (0x0F << 3) & buffer[2];
+  unsigned char recursion_desired = 0x01 & buffer[2];
+  return_packet.push_back(opcode | recursion_desired);  // QR=0 for query
+
+  // Flags byte 3: all zeros
+  return_packet.push_back(0x00);
+
+  // Question count: 1
+  return_packet.push_back(0x00);
+  return_packet.push_back(0x01);
+
+  // Answer count: 0
+  return_packet.push_back(0x00);
+  return_packet.push_back(0x00);
+
+  // Authority count: 0
+  return_packet.push_back(0x00);
+  return_packet.push_back(0x00);
+
+  // Additional count: 0
+  return_packet.push_back(0x00);
+  return_packet.push_back(0x00);
+
+  // Add the question
+  question.add_question_into_return_packet(&return_packet);
+
+  return return_packet;
 }
 
-std::vector<unsigned char> DNSPacket::get_return_packet() {
+// ============================================================================
+// DNS PACKET Getters
+// ============================================================================
+
+std::vector<unsigned char> DNSPacket::get_packet_vector() {
   std::vector<unsigned char> return_packet;
 
   // Header section
@@ -67,22 +101,26 @@ std::vector<Answer> DNSPacket::get_answer_section() {
   return this->answer_vector;
 }
 
-std::vector<unsigned char> DNSPacket::get_return_packet_for_question(int index) {
-  std::vector<unsigned char> return_packet;
+// ============================================================================
+// DNS PACKET Buffer Helpers
+// ============================================================================
 
-  // Header section
-  for (auto i = 0; i < this->header.size(); i++) {
-    return_packet.push_back(this->header[i]);
+void DNSPacket::copy_buffer(char buf[BUFFER_SIZE]) {
+  for (int i = 0; i < BUFFER_SIZE; i++) {
+    this->buffer[i] = buf[i];
   }
-
-  this->question_vector[index].add_question_into_return_packet(&return_packet);
-
-  return return_packet;
 }
 
-int DNSPacket::convert_unsigned_char_tuple_into_int(unsigned char char_one,
-                                                    unsigned char char_two) {
-  return ((int)char_one << 8) | char_two;
+// ============================================================================
+// DNS PACKET Header Helpers
+// ============================================================================
+
+void DNSPacket::copy_header() {
+  for (auto i = 0; i < HEADER_BYTE_SIZE; i++) {
+    this->header[i] = this->buffer[i];
+  }
+  // We've created the header so now our index is at 12. Header range: [0, 11].
+  this->buffer_pointer = HEADER_BYTE_SIZE;
 }
 
 void DNSPacket::create_header() {
@@ -127,9 +165,13 @@ void DNSPacket::create_header() {
   this->buffer_pointer = 12;
 }
 
-void DNSPacket::create_question_section() {
-  unsigned char high_char = header[4];
-  unsigned char low_char = header[5];
+// ============================================================================
+// DNS PACKET Question Helpers
+// ============================================================================
+
+void DNSPacket::copy_question_section() {
+  unsigned char high_char = this->header[4];
+  unsigned char low_char = this->header[5];
 
   // Figure out how many questions exist by computing on high a low characters.
   this->question_count =
@@ -140,50 +182,8 @@ void DNSPacket::create_question_section() {
   }
 }
 
-void DNSPacket::create_sections_with_forwarder(sockaddr_in forwarding_address, int udpSocket) {
-  // Let's create the question section as normal.
-  create_question_section();
-  // Answer section
-  create_answer_section_with_forwarding_address(forwarding_address, udpSocket);
-}
-
-void DNSPacket::copy_pointer(std::vector<unsigned char> domain_vector, int pointer_loc) {
-  unsigned char buffer_item = this->buffer[pointer_loc];
-  while (buffer_item != 0x00) {
-    domain_vector.push_back(buffer_item);
-    pointer_loc++;
-    buffer_item = this->buffer[pointer_loc];
-  }
-  // The 0x00 - the null byte that indicates that the
-  // domain name has ended.
-  domain_vector.push_back(buffer_item);
-}
-
 void DNSPacket::copy_question() {
-  std::vector<unsigned char> domain_vector;
-  // We're going to copy over the domain name
-  unsigned char buffer_item = this->buffer[this->buffer_pointer];
-
-  while (buffer_item != 0x00) {
-    // Check if buffer_item is a pointer
-    unsigned char pointer_check = buffer_item & 0xc0;
-    if ((pointer_check ^ 0xc0) == 0x00) {
-      // It's a pointer!
-      int pointer_loc = convert_unsigned_char_tuple_into_int((buffer_item & 0x3F), this->buffer[this->buffer_pointer + 1]);
-      copy_pointer(domain_vector, pointer_loc);
-      // pass this pointer, the next (which is part of the pointer computation), and finish on the next.
-      this->buffer_pointer += 2;
-    } else {
-      domain_vector.push_back(buffer_item);
-      this->buffer_pointer++;
-    }
-    buffer_item = this->buffer[this->buffer_pointer];
-  }
-
-  // The 0x00 - the null byte that indicates that the
-  // domain name has ended.
-  domain_vector.push_back(buffer_item);
-  this->buffer_pointer++;
+  std::vector<unsigned char> domain_vector = copy_domain_name();
 
   // consume 4 more bytes:
   //  - 2 bytes for the type
@@ -203,6 +203,57 @@ void DNSPacket::copy_question() {
 
   auto question = Question(domain_vector, type, ques_class);
   this->question_vector.push_back(question);
+}
+
+// ============================================================================
+// DNS PACKET Answer Helpers
+// ============================================================================
+
+void DNSPacket::copy_answer_section() {
+  unsigned char high_char = this->header[6];
+  unsigned char low_char = this->header[7];
+
+  this->answer_count =
+      DNSPacket::convert_unsigned_char_tuple_into_int(high_char, low_char);
+
+  for (auto i = 0; i < this->answer_count; i++) {
+    // Add domain name
+    auto domain_name = copy_domain_name();
+    // We'll add the type. Size of 2 bytes. Default to 1.
+    std::array<unsigned char, 2> type;
+    for (auto i = 0; i < type.size(); i++) {
+      type[i] = buffer[this->buffer_pointer];
+      this->buffer_pointer++;
+    }
+    //  We'll add the class. Size of 2 bytes. Default to 1.
+    std::array<unsigned char, 2> ans_class;
+    for (auto i = 0; i < ans_class.size(); i++) {
+      ans_class[i] = buffer[this->buffer_pointer];
+      this->buffer_pointer++;
+    }
+    // Setting TTL. Size of 4 bytes. Default to 60 seconds.
+    std::array<unsigned char, 4> ttl;
+    for (auto i = 0; i < ttl.size(); i++) {
+      ttl[i] = buffer[this->buffer_pointer];
+      this->buffer_pointer++;
+    }
+    // Length of Data. Size of 2 bytes.
+    std::array<unsigned char, 2> length;
+    for (auto i = 0; i < length.size(); i++) {
+      length[i] = buffer[this->buffer_pointer];
+      this->buffer_pointer++;
+    }
+    // Data. Variable size. Read from buffer based on length field.
+    std::vector<unsigned char> data;
+    int data_length = convert_unsigned_char_tuple_into_int(length[0], length[1]);
+    for (auto j = 0; j < data_length; j++) {
+      data.push_back(buffer[this->buffer_pointer]);
+      this->buffer_pointer++;
+    }
+
+    auto answer = Answer(domain_name, type, ans_class, ttl, length, data);
+    answer_vector.push_back(answer);
+  }
 }
 
 // For now, we are only answering with a single answer.
@@ -234,28 +285,38 @@ void DNSPacket::create_answer_section() {
   }
 }
 
-void DNSPacket::create_answer_section_with_forwarding_address(sockaddr_in forwarding_address, int udpSocket) {
-  std::cout << "Answer section with forwarding address" << std::endl;
+void DNSPacket::create_answer_section_with_forwarding_address(sockaddr_in forwarding_address) {
   for (auto i = 0; i < this->question_count; i++) {
-    int bytesRead;
-    char buffer[512];
-    socklen_t clientAddrLen = sizeof(forwarding_address);
-
-    auto packet = get_return_packet_for_question(i);
-
-    std::cout << "forwarding packet" << std::endl;
-    // Forward packet
-    if (sendto(udpSocket, packet.data(), packet.size(), 0, reinterpret_cast<struct sockaddr *>(&forwarding_address), sizeof(forwarding_address)) == -1) {
-      perror("Failed to send response");
+    // Create a new socket for forwarding
+    int forwardSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (forwardSocket == -1) {
+      perror("Failed to create forward socket");
+      continue;
     }
-    
-    std::cout << "listening to packet" << std::endl;
+
+    int bytesRead;
+    char buffer[BUFFER_SIZE];
+    socklen_t serverAddrLen = sizeof(forwarding_address);
+
+    auto question = this->question_vector[i];
+    auto packet = create_question_packet(question);
+
+    // Forward packet
+    ssize_t sent_bytes = sendto(forwardSocket, packet.data(), packet.size(), 0, reinterpret_cast<struct sockaddr *>(&forwarding_address), sizeof(forwarding_address));
+    if (sent_bytes == -1) {
+      perror("Failed to send forward query");
+      close(forwardSocket);
+      continue;
+    }
+    std::cout << "Sent " << sent_bytes << " bytes to forwarder" << std::endl;
+
     // Listen to response
-    bytesRead = recvfrom(udpSocket, buffer, sizeof(buffer), 0,
+    bytesRead = recvfrom(forwardSocket, buffer, sizeof(buffer), 0,
     reinterpret_cast<struct sockaddr *>(&forwarding_address),
-    &clientAddrLen);
+    &serverAddrLen);
     if (bytesRead == -1) {
-      perror("Error receiving data");
+      perror("Error receiving data from forward server");
+      close(forwardSocket);
       break;
     }
     buffer[bytesRead] = '\0';
@@ -264,49 +325,129 @@ void DNSPacket::create_answer_section_with_forwarding_address(sockaddr_in forwar
 
     // Parse response
     DNSPacket server_response_packet = DNSPacket(buffer);
+    // std::cout << "Forwarder response: " << std::endl;
+    // server_response_packet.print_dns_packet();
     auto server_response_answer_section = server_response_packet.get_answer_section();
-    // Making a VERY STRONG ASSUMPTION that there is only one answer in the packet.
-    if (server_response_answer_section.size() == 1) {
-      auto server_answer = server_response_answer_section[0];
-      this->answer_vector.push_back(server_answer);
-    } else {
-      throw std::runtime_error("Did not receive an answer from server.");
+
+    if (server_response_answer_section.size() >= 1) {
+      // Add all answers from the forwarding server
+      for (const auto& server_answer : server_response_answer_section) {
+        this->answer_vector.push_back(server_answer);
+      }
     }
+
+    close(forwardSocket);
   }
-}
-
-std::vector<unsigned char>
-DNSPacket::convert_string_to_label_sequence(std::string str) {
-  std::vector<unsigned char> label_sequence;
-  while (str.length() != 0) {
-    auto delimeter_location = str.find(NAME_DELIMETER);
-    std::string token = str.substr(0, delimeter_location);
-
-    // Convert token to label sequence.
-    // Add length
-    unsigned char token_length = (unsigned char)token.length();
-    label_sequence.push_back(token_length);
-
-    // Add characters
-    for (auto i = 0; i < token.length(); i++) {
-      char token_char = token.at(i);
-      label_sequence.push_back((unsigned char)token_char);
-    }
-
-    // Shorten string to compute the next token
-    auto removal_location = delimeter_location + 1;
-    if (delimeter_location == std::string::npos) {
-      removal_location = str.length();
-    }
-    str.erase(0, removal_location);
-  }
-  // Null byte
-  label_sequence.push_back(0x00);
-  return label_sequence;
 }
 
 // ============================================================================
-// DNS PACKET PRINT HELPER FUNCTIONS
+// DNS PACKET Response Helpers
+// ============================================================================
+
+DNSPacket DNSPacket::respond_to_packet(DNSPacket packet) {
+  auto response_packet = DNSPacket();
+  response_packet.mutate_for_response(packet);
+  return response_packet;
+}
+
+void DNSPacket::mutate_for_response(DNSPacket packet) {
+  auto buffer_vector = packet.get_packet_vector();
+
+  char buffer[BUFFER_SIZE];
+  auto buffer_data = buffer_vector.data();
+  for (auto i = 0; i < BUFFER_SIZE; i++) {
+    buffer[i] = buffer_data[i];
+  }
+
+  this->buffer_pointer = 0;
+  copy_buffer(buffer);
+  create_header();
+  copy_question_section();
+  create_answer_section();
+}
+
+DNSPacket DNSPacket::forward_packet(DNSPacket packet, sockaddr_in forwarding_address) {
+  auto response_packet = DNSPacket();
+  response_packet.mutate_for_forward_response(packet, forwarding_address);
+  return response_packet;
+}
+
+void DNSPacket::mutate_for_forward_response(DNSPacket packet, sockaddr_in forwarding_address) {
+  auto buffer_vector = packet.get_packet_vector();
+
+  char buffer[BUFFER_SIZE];
+  auto buffer_data = buffer_vector.data();
+  for (auto i = 0; i < BUFFER_SIZE; i++) {
+    buffer[i] = buffer_data[i];
+  }
+
+  this->buffer_pointer = 0;
+  copy_buffer(buffer);
+  create_header();
+  copy_question_section();
+  create_answer_section_with_forwarding_address(forwarding_address);
+}
+
+// ============================================================================
+// DNS PACKET Utility Helpers
+// ============================================================================
+
+void DNSPacket::copy_pointer(std::vector<unsigned char> &domain_vector, int pointer_loc) {
+  unsigned char buffer_item = this->buffer[pointer_loc];
+  while (buffer_item != 0x00) {
+    domain_vector.push_back(buffer_item);
+    pointer_loc++;
+    buffer_item = this->buffer[pointer_loc];
+  }
+  // The 0x00 - the null byte that indicates that the
+  // domain name has ended.
+  domain_vector.push_back(buffer_item);
+}
+
+std::vector<unsigned char> DNSPacket::copy_domain_name() {
+  std::vector<unsigned char> domain_vector;
+  // We're going to copy over the domain name
+  unsigned char buffer_item = this->buffer[this->buffer_pointer];
+
+  while (buffer_item != 0x00) {
+    // Check if buffer_item is a pointer. Pointers begin with two filled in bits:
+    // +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    // | 1  1|                OFFSET                   |
+    // +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    auto pointer_flag = 0xc0;
+    unsigned char buffer_item_flag = buffer_item & pointer_flag;
+    bool is_merged_item_in_pointer_format = (buffer_item_flag ^ 0xc0) == 0x00;
+
+    if (is_merged_item_in_pointer_format) {
+      auto pointer_offset = buffer_item & 0x3F;
+      auto next_offset = this->buffer[this->buffer_pointer + 1];
+      int pointer_loc = convert_unsigned_char_tuple_into_int(pointer_offset, next_offset);
+      copy_pointer(domain_vector, pointer_loc);
+      // pass this pointer, the next (which is part of the pointer computation), and finish on the next.
+      this->buffer_pointer += 2;
+    } else {
+      domain_vector.push_back(buffer_item);
+      this->buffer_pointer++;
+    }
+
+    buffer_item = this->buffer[this->buffer_pointer];
+  }
+
+  // The 0x00 - the null byte that indicates that the
+  // domain name has ended.
+  domain_vector.push_back(buffer_item);
+  this->buffer_pointer++;
+
+  return domain_vector;
+}
+
+int DNSPacket::convert_unsigned_char_tuple_into_int(unsigned char char_one,
+                                                    unsigned char char_two) {
+  return ((int)char_one << 8) | char_two;
+}
+
+// ============================================================================
+// DNS PACKET PRINT HELPERS
 // ============================================================================
 
 // Helper: Convert domain name label sequence to readable string

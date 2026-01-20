@@ -7,41 +7,55 @@
 
 class DNSPacket {
   private:
-    // Initial input
+    // Buffer Input
     char buffer[512];
     int buffer_pointer;
+    void copy_buffer(char buffer[512]);
     
-    void create_initial_dns_packet();
-    void create_initial_dns_packet_with_forwarding_address(sockaddr_in forwarding_address, int udpSocket);
+    // DNS Packet construction
+    void copy_dns_packet(char buffer[512]);
+    std::vector<unsigned char> create_question_packet(Question question);
 
     // Stored header
     std::array<unsigned char, 12> header;
+    void copy_header();
     void create_header();
 
     // Stored question section
     int question_count;
     std::vector<Question> question_vector;
+    void copy_question_section();
     void copy_question();
-    void copy_pointer(std::vector<unsigned char> domain_vector, int pointer_loc);
-    void create_question_section();
 
     // Stored answer section
+    int answer_count;
     std::vector<Answer> answer_vector;
+    void copy_answer_section();
     void create_answer_section();
-    void create_answer_section_with_forwarding_address(sockaddr_in forwarding_address, int udpSocket);
 
-    // Used for question and answer question in cases
-    // where there is a forwarder.
-    void create_sections_with_forwarder(sockaddr_in forwarding_address, int udpSocket);
+    // Shared utilities
+    std::vector<unsigned char> copy_domain_name();
+    void copy_pointer(std::vector<unsigned char> &domain_vector, int pointer_loc);
 
-    std::vector<unsigned char> get_return_packet_for_question(int index);
+    // Forwarder Helpers
+    void create_answer_section_with_forwarding_address(sockaddr_in forwarding_address);
   public:
-    static int convert_unsigned_char_tuple_into_int(unsigned char char_one, unsigned char char_two);
-    static std::vector<unsigned char> convert_string_to_label_sequence(std::string str);
-    DNSPacket(char buffer[512], sockaddr_in forwarding_address, int udpSocket);
+    // Constructors
+    DNSPacket();
     DNSPacket(char buffer[512]);
-    std::vector<unsigned char> get_return_packet();
+
+    // Getters
+    std::vector<unsigned char> get_packet_vector();
     std::vector<Answer> get_answer_section();
+
+    //  Helpers
+    static int convert_unsigned_char_tuple_into_int(unsigned char char_one, unsigned char char_two);
+
+    // Responses
+    static DNSPacket respond_to_packet(DNSPacket packet);
+    static DNSPacket forward_packet(DNSPacket packet, sockaddr_in forwarding_address);
+    void mutate_for_response(DNSPacket packet);
+    void mutate_for_forward_response(DNSPacket packet, sockaddr_in forwarding_address);
 
     // Print functions
     void print_dns_packet();
